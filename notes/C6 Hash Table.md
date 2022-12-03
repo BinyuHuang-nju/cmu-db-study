@@ -117,7 +117,7 @@ A发现两边都能插入，随意选择一边，或根据某种填充因子等�
 
 ![ch](figs/C6/extendible-hashing3.png)  
 此时Insert C，且Hash(C) = 10...时，该bucket发生overflow，所以我们要做拆分。  
-将global counter加1变为3，则slot array长度从4变为9了，然后将该overflow bucket的local counter修改为3，拆分成两个counter为3的bucket。  
+将global counter加1变为3，则slot array长度从4变为8了，然后将该overflow bucket的local counter修改为3，拆分成两个counter为3的bucket。  
 ![ch](figs/C6/extendible-hashing4.png)  
 现在我们修改了global counter，就需要根据local counter，对slot array中的每个slot重新做映射。原来的0开头的bucket和11开头的bucket不做调整，设定指向它们的指针，而10开头的现在被拆分成为100和101开头的两个bucket，根据前缀自行指向不同的bucket。  
 ![ch](figs/C6/extendible-hashing5.png)  
