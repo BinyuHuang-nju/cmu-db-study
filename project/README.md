@@ -49,5 +49,5 @@
 -	注意NewPgImp与FetchPgImp之间的区别，一边需要调用AllocatePage()获取page id，一边需要ReadPage从disk fetch出该已有page的数据
 
 -	注意关键数据结构之间的同步，replacer和page table、free list这三者内所表达的pages应该在任何一个函数前后都是相通的。
-	-	像函数NewPgImp、FetchPgImp中，主动换出旧page换入新page时，确保先在replacer、page table中删除旧page数据、重置frame内容，再换入新page，在replacer、page table中加入新page数据。
-	-	像函数DeletePgImp中，删除page时，需要保证page table、replacer中删除该page信息，free list中加入该frame，若为脏页还需刷盘，再重置该frame内容。
+	-	如：函数NewPgImp、FetchPgImp中，主动换出旧page换入新page时，确保先在replacer、page table中删除旧page数据、重置frame内容，再换入新page，在replacer、page table中加入新page数据。
+	-	如：函数DeletePgImp中，删除page时，需要保证page table、replacer中删除该page信息，free list中加入该frame，若为脏页还需刷盘，再重置该frame内容。

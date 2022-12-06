@@ -2,7 +2,7 @@
 
 ## Lab
 
-[bustub](https://github.com/BinyuHuang-nju/bustub/tree/main)
+Lab地址： [bustub](https://github.com/BinyuHuang-nju/bustub/tree/main)
 
 Lab小结： [Lab notes](project/README.md)
 
