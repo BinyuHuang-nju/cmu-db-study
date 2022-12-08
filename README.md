@@ -8,4 +8,6 @@ Lab小结： [Lab notes](project/README.md)
 
 ## Notes
 
+目前整理了前七节课的内容。  
+
 ## Homework
