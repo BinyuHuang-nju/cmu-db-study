@@ -90,7 +90,7 @@ A发现两边都能插入，随意选择一边，或根据某种填充因子等�
 ![rhh](figs/C6/cuckoo-hashing5.png)  
 
 
-#### 总结
+#### 总结 动态hash table
 对于静态hash table，我们需要知道table的大小，而且我们扩缩容时，需要重建整张表，迁移数据。  
 由此对应的还有动态hashing schemes。  
 

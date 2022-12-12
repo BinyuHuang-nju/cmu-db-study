@@ -38,7 +38,7 @@
 
 
 #### Phase 3: Buffer pool manager
--	仔细一点找着每个函数的brief写即可
+-	仔细一点照着每个函数的brief写即可
 
 -	主要注意调用disk manager的ReadPage、WritePage时机
 
@@ -50,4 +50,17 @@
 
 -	注意关键数据结构之间的同步，replacer和page table、free list这三者内所表达的pages应该在任何一个函数前后都是相通的。
 	-	如：函数NewPgImp、FetchPgImp中，主动换出旧page换入新page时，确保先在replacer、page table中删除旧page数据、重置frame内容，再换入新page，在replacer、page table中加入新page数据。
-	-	如：函数DeletePgImp中，删除page时，需要保证page table、replacer中删除该page信息，free list中加入该frame，若为脏页还需刷盘，再重置该frame内容。
+	-	如：函数DeletePgImp中，删除page时，需要保证page table、replacer中删除该page信息，free list中加入该frame，若为脏页还需刷盘，再重置该frame内容。  
+
+
+
+### Lab 2 B+ tree
+笔记：  
+
+1.	多态类之间的类型转换用dynamic\_cast，不同类型的指针类型之间的转换用reinterpret\_cast。  
+
+2.	HeaderPage in header\_page.h:
+	1.	继承自Page类，故有Page的4KB data，lsn，pin count，page id等属性
+	2.	是对4KB data\_ content的组织管理。data\_中，开始的4B为int型的record count，代表该page中record的数量；从offset 4b开始，后面为一个个的36b的record，36b分为32b + 4b，前32b存放该record数据，后4b存放page\_id\_t型的root\_id。
+
+3.	对B+树的任意更新操作都有可能修改root\_page\_id，此时我们需要立刻调用BPlusTree::UpdateRootId来保证B+ tree index被持久化到磁盘上。

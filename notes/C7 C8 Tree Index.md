@@ -60,9 +60,14 @@ Node size关系到查询速度，对于不同的存储设备，不同的size带�
 #### Selection conditions
 ![sc](figs/C7/selection-conditions.png)  
 这里也体现了B+树相比于hash表的一个优势，那就是我们无须通过一个具体的key来进行查找，而是用key的一部分，我们可以根据a和b进行查找，但是hash表是根据a、b、c做的hash，只用a和b就hash不到目标bucket中。  
+如果我们使用的是Hash索引，那就必须使用完整的key来做查找，我们没有办法进行对key的部分做查找，也没办法做范围查找，只能做对完整key的定点查找。  
 
 ![sc](figs/C7/selection-conditions1.png)  
-![sc](figs/C7/selection-conditions2.png)  
+![sc](figs/C7/selection-conditions2.png)   
+
+例如，PostgreSQL支持hash index，当我们对table emails的email建hash index，我们select ... where email = 'xxx';这是很OK的，这是定点查找，在hash中挺快，我们通过EXPLAIN查看query plan可以看到是hash index scan。但如果是类似select ... where email like 'xx%';，那就会花很长时间了，可以看到是对emails表的seq scan，因为这种场景hash就是做不到匹配，那么只能使用默认的顺序扫描来做查找。  
+
+我们对email同时建hash index和btree index，select ... where email = '000';，则query plan会告诉你用hash index。select ... where email > '000';，则采用seq scan，select ... where email > 'z00';，则采用btree index scan，这是因为对000来说，我们可能还是要遍历大部分email，那不如直接进行顺序扫描来的效率更高，但对z00来说，通过索引我们能扔掉大量数据，找到满足要求的第一个B+树叶节点，向右扫描即可。这就取决于cost model的设计。  
 
 #### B+树中的变长key问题
 
@@ -81,6 +86,9 @@ Node size关系到查询速度，对于不同的存储设备，不同的size带�
 一种是就存储重复的key多次，一种方案是给每个key维护一个包含多个value的list。第一种方案更常用。  
 其中，对于方案1，我们不能保证所有的相同key的kv都保存在一个page中，当该key出现很多次的时候，这时我们可以使用overflow chain的形式，给这样的leaf node再单独加上overflow node来容纳同一个key的数据。  
 ![B+ tree](figs/C7/B-plus-tree8.png)   
+
+另一种方案是，我们可以让每个key unique，即在插入的key后面append对应tuple的record id。当然这种方案有时候看上去会有点蠢，因为可能我们存的value就是record id，但它同时被用来当key使用。  
+![B+ tree](figs/C7/B-plus-tree15.png)   
 
 #### 在单节点内部搜索
 
@@ -111,3 +119,51 @@ Node size关系到查询速度，对于不同的存储设备，不同的size带�
 ![B+ tree](figs/C7/B-plus-tree14.png)   
 所以pointer swizzling的思想就是，如果我们知道某page当前被pin住，那么我们完全可以把 page id替换为page\*，即真实的bp中该page的指针，而无需经过bp manager的处理。当然我们需要确保，如果该page被移出内存写入磁盘，就不能保存page指针。  
 这看似如果page经常换入换出，保存这样的指针没什么提升。但是当我们考虑一棵树在db中，那些树更靠近根节点的几层由于使用频率非常高，很多时候被cache在内存中很长时间是非常正常的，而他们被access的次数也高，存储这样的page\*指针是非常划算的。
+
+
+#### implicit index
+![B+ tree](figs/C7/B-plus-tree16.png)   
+大多数DBMS为隐式的为pk或有unique性质的属性做索引，这也是因为当我们插入更新一个tuple的时候，我们需要去查看这些属性有没有冲突，如果没有索引就可能需要顺序扫描整个table，这就很麻烦，建index就把查重事情做简单了。  
+但对外键来说，一般不会做这样类似的索引，除非指向的属性也北有unique constraints。  
+![B+ tree](figs/C7/B-plus-tree17.png)   
+
+#### partial index
+![B+ tree](figs/C7/B-plus-tree18.png)   
+
+#### covering index
+覆盖索引。如下图例子中，我们覆盖了查询的对象，可以直接根据index结果返回数据，而不需要再去根据record id查找对应的page等，这还涉及多次I/O，进而减少DBMS bp资源的竞争。  
+![B+ tree](figs/C7/B-plus-tree19.png)   
+
+#### index include columns
+![B+ tree](figs/C7/B-plus-tree20.png)   
+
+#### B+树总结
+在B+树中，内部节点的key不能够告诉我们某个key是否存在，我们必须要遍历到叶节点才可以。这意味着当我们想做一次点查时，每一层都可能会产生一次buffer pool page miss。  
+所以，如果我们在没有遍历到底部叶节点的情况下，就能在上层搞清楚某个key是否不存在就更好了，比如前缀树。  
+
+
+#### Trie index
+![trie tree](figs/C7/trie-tree.png)   
+Trie的形状取决于key的分布和长度，它是一个deterministic树，即我们不论以什么方式做各种插入更新删除，完成后树的形状总是一样的，有一样的物理数据结构，也不需要像B+树一样进行重新平衡等操作。  
+在Trie中，所有操作的复杂度都是O(k) where k = lengthof(key)。但是对于顺序扫描来说，Trie做顺序扫描的话，需要在内部节点间上下移动，也需要保存从root到当前节点的前缀信息，不像B+树可以沿着叶节点扫描。但如果是点查，那Trie的速度就能比B+树快很多。  
+
+![trie tree](figs/C7/trie-tree2.png)   
+一般来说不会拿1bit来作为单node存的信息，会让树深度很大，一般至少8bit。   
+
+#### Radix tree
+
+![trie tree](figs/C7/trie-tree3.png)   
+垂直压缩后的Trie tree。当树是静态的时候，这种树能保证和原来的Trie一致，但经历一些插入删除后，可能就会带来false positive问题。   
+
+![trie tree](figs/C7/trie-tree4.png)   
+![trie tree](figs/C7/trie-tree5.png)   
+![trie tree](figs/C7/trie-tree6.png)   
+
+
+
+### 总结
+上述提到的B+树、Trie树的使用场景主要是point query、range query，它们对keyword查找来说是很差的，比如搜索所有包含'aaa'的网页，这只是某个属性中的一部分，那么查找起来就不适用了。
+
+#### inverted index
+倒排索引。会将word映射到包含这个word的trecord中。    
+![inverted-index](figs/C7/inverted-index.png)   
