@@ -54,7 +54,7 @@ Node size关系到查询速度，对于不同的存储设备，不同的size带�
 因为可能在之后不久，我们又往该节点中插入了一些数据，导致又需要split。而merge操作、split操作的代价很昂贵，故更多的做法是定期重新平衡B+树，或直接从头开始重建树。
 
 #### Clustered indexes
-聚簇索引，建表的时候定义一个索引，索引对page中tuple的物理布局进行匹配和排序。像MySQL讲tuple存储在叶子节点上，这就属于clustered index，这保证磁盘上page的tuple都以主键顺序排序的。在MySQL中如果我们没有指定pk，它会为我们定义一个，会使用row id或record id作为pk，以此来弄清楚tuple的实际位置。  
+聚簇索引，建表的时候定义一个索引，索引对page中tuple的物理布局进行匹配和排序。像MySQL将tuple存储在叶子节点上，这就属于clustered index，这保证磁盘上page的tuple都以主键顺序排序的。在MySQL中如果我们没有指定pk，它会为我们定义一个，会使用row id或record id作为pk，以此来弄清楚tuple的实际位置。  
 
 
 #### Selection conditions
