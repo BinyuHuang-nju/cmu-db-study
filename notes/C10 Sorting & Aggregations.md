@@ -1,10 +1,10 @@
 ### DB架构
-![status](figs/C10/status.png)  
+![status](figs/C10/status.PNG)  
 
 ### 查询计划
 查询计划是一条指令，它是数据库系统具体如何执行一个给定查询的方式。查询计划一般被整理为一个树形结构或者是一个有向无环图。在树的叶子节点上，我们对表进行扫描或访问，将tuple上移给下一个operator，让该operator做想做的事情。  
 
-![qp](figs/C10/query-plan.png)   
+![qp](figs/C10/query-plan.PNG)   
 以该sql为例，对B中的结果进行过滤，排除所有不大于100的数据，将结果传给上层的join operator，然后该operator生成输出结果，交给上层的projection operator。  
 
 需要注意的是，这里的查询计划是logical plan(逻辑计划)，我们不会讨论关于怎么去实现这些不同operator的事情。例如，我们向做join，但不会讨论具体如何把两个输出结果join起来；join需要获取表A的数据，但我们不会具体讨论如果取表A，是顺序扫描，还是索引扫描来获取tuple。  
@@ -22,7 +22,7 @@
 
 有时，query会显式的要求tuples以某种顺序排序，例如使用ORDER BY。但有时候即使query没有特定要求某种顺序，我们可能会想对数据库系统中执行的查询做些优化。例如，对DISTINCT来说，有序的中间结果可以帮助系统很简单的去除掉冗余tuple，只需要顺序遍历即可；对于GROUP BY来说，如果结果被排好序，那么我们就可以扫描一次表，然后根据需要来生成聚合结果；我们也会讨论如何对bulk进行优化，比如B+树中的bulk loading(加载大量数据)，如果沿着叶子节点对所有数据进行了预排序，然后我们就可以自下而上的去构建索引，这种方式会更高效。综上，我们都需要sorting来处理超过内存量的数据。
 
-![qp](figs/C10/sorting.png)   
+![qp](figs/C10/sorting.PNG)   
 
 如果内存能cache住所有数据，那么传统的快排、堆排序、冒泡之类的都是很有效，担当数据没法一口气放在内存中，那么快排就是个很糟糕的选择，因为快排会进行大量的随即跳转，它会随即跳转到内存中的不同位置上，那么对上述场景来说，随即跳转意味着随机I/O，因为我们跳转的page可能实际不是在内存中的。所以我们要一种能在磁盘上进行读写数据的成本也考虑进去的算法，该算法能做出某种决策，试着最大化循序I/O所获取的数据量。即便是在速度更快的SSD上，顺序I/O也远比随机I/O来的高效。  
 
@@ -78,3 +78,35 @@ Phase2：将排好序的runs合并为更大的runs
 ![qp](figs/C10/sorting-external-merge-sort7.PNG)   
 如果是非聚簇索引，每个record可能都需要做一次I/O，成本较大。   
 ![qp](figs/C10/sorting-external-merge-sort8.PNG)   
+
+
+### Aggregations
+聚合，即将多个tuple中的单个属性的值折叠为单个标量值。DBMS需要一种方法来快速找到具有相同属性的tuple，以此进行grouping。  
+
+主要有两种实现方式，分别为sorting和hashing。Sorting是做大量的顺序访问(sequential access)，而hashing是做随机访问(random access)，在不同场景下有不同的优势。一般来说，不管磁盘的速度有多快，hashing的效果会更好。  
+
+![qp](figs/C10/sorting-external-merge-sort9.PNG)   
+以上述sql为例，查询计划树中最先做的是过滤，然后根据projection移除所有结果中不需要的列，最后做排序，由于DISTINCT关键字，我们需要通过游标遍历这一列，去除冗余数据。  
+
+但是实际上，很多场景并不需要我们做专门做排序。  
+![qp](figs/C10/sorting-external-merge-sort10.PNG)   
+
+当DBMS扫描表时，创建一个临时的hash table用于存放数据。  
+![qp](figs/C10/sorting-external-merge-sort11.PNG)   
+
+当内存不足以cache住这张临时hash table时，我们要试着最大化对每个放入内存中的page所做的工作量。External hashing aggregate做的就是这个事情，它和外部归并排序类似，都采用divide-and-conquer的思想。
+
+传入数据，所有具有相同key的tuple会被放在同一个分区中；对每一个分区，构建一个内存中hash table。这样可以最大化sequential I/O的工作量。  
+![qp](figs/C10/sorting-external-merge-sort12.PNG)   
+
+在Phase1，我们要做的事情就是将这些tuple拆分到不同的分区中，然后根据需要可以将其写到磁盘中。hash函数是任意的，比如Murmurhash、CityHash、XXHash3等等，确保相同key的tuple一定会落入同一个分区即可。当分区存满了，利用buffer manager写出到磁盘上。当有B个buffer page时，我们就可以分配B-1个分区。  
+![qp](figs/C10/sorting-external-merge-sort13.PNG)   
+![qp](figs/C10/sorting-external-merge-sort14.PNG)   
+
+在Phase2，我们对每个分区(bucket/partition)进行rehash。对每个分区，会将该分区的page依次写入内存，构建一个hash table，遍历page。当我们扫描完分区内的所有page时，我们会去计算想要的答案，然后将该hash table扔掉，因为我们知道结果已经生成了，而该分区内在hash table上所更新的key，永远不会被其它分区更新，因为Phase1保证相同的key一定在同一个分区中，Phase1的hash为我们保证了局部性。  
+![qp](figs/C10/sorting-external-merge-sort15.PNG)   
+![qp](figs/C10/sorting-external-merge-sort16.PNG)   
+
+![qp](figs/C10/sorting-external-merge-sort17.PNG)   
+这里RunningVal具体的类型取决于sql语句的期望数据。  
+![qp](figs/C10/sorting-external-merge-sort18.PNG)  
